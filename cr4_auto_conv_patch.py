@@ -20,7 +20,7 @@ llmClient = OpenAI(
 
 def fetch_cve_data(cve_id):
     url = "https://services.nvd.nist.gov/rest/json/cves/2.0"
-    params = {"cveId": cve_id.strip()}
+    params = {"cveId": cve_id}
     headers = {"User-Agent": "CVE-Fetcher/1.0"}
 
     try:
@@ -55,6 +55,7 @@ def fetch_cve_data(cve_id):
             severity_level = cvss.get("cvssData", {}).get("baseSeverity", "Unknown")
             vector = cvss.get("cvssData", {}).get("vectorString")
 
+        # Recommendations
         recommendations = []
         if severity_level in ("HIGH", "CRITICAL"):
             recommendations.extend([
@@ -73,12 +74,24 @@ def fetch_cve_data(cve_id):
             recommendations.append("Expose affected services behind a firewall or VPN.")
             recommendations.append("Limit network access to trusted sources.")
 
-        references = [ref["url"] for ref in cve_data.get("references", [])]
+        # Top 5 references
+        references = [ref["url"] for ref in cve_data.get("references", []) if "github.com" in ref["url"] or "git.openssl.org" in ref["url"]][:5]
 
-        patch_urls = [
-            url + ".patch" if re.match(r'https://github\\.com/[^/]+/[^/]+/commit/[a-f0-9]+$', url) else url
-            for url in references
-        ]
+        # Derive patch URLs
+        patch_urls = []
+        for url in references:
+            if re.match(r'https://github\.com/[^/]+/[^/]+/commit/[a-f0-9]+$', url):
+                patch_urls.append(url + '.patch')
+            elif 'git.openssl.org' in url and 'commitdiff' in url:
+                match = re.search(r'h=([a-f0-9]+)', url)
+                if match:
+                    commit_hash = match.group(1)
+                    github_patch = f'https://github.com/openssl/openssl/commit/{commit_hash}.patch'
+                    patch_urls.append(github_patch)
+                else:
+                    patch_urls.append(url)
+            else:
+                patch_urls.append(url)
 
         derived_patches = list(set(patch_urls))
 
@@ -91,7 +104,7 @@ def fetch_cve_data(cve_id):
             "severity": severity_level,
             "vector": vector,
             "recommendations": recommendations,
-            "references": references[:5],
+            "references": references,
             "patches": derived_patches[:5]
         }
 
@@ -99,7 +112,9 @@ def fetch_cve_data(cve_id):
         return {"error": f"Request error: {str(e)}"}
     except Exception as e:
         return {"error": f"Unexpected error: {str(e)}"}
+    
 
+   
 def get_actual_url_and_ext(url):
     # Case 1: GitHub direct commit
     match = re.match(r'(https://github\.com/[^/]+/[^/]+/commit/[a-f0-9]+)', url)
