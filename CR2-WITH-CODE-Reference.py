@@ -18,7 +18,6 @@ llmClient = OpenAI(
 )
 
 
-
 def fetch_cve_data(cve_id):
     url = "https://services.nvd.nist.gov/rest/json/cves/2.0"
     params = {"cveId": cve_id.strip().upper()}
@@ -184,7 +183,11 @@ def main():
 
     if "cve_data" in st.session_state:
         data = st.session_state["cve_data"]
-        st.markdown(f"### Description\n> {data['description']}")
+        st.markdown(f"### Description{data['description']}")
+
+        st.markdown("### 🔑 Keywords used for patch relevance search")
+        st.code(", ".join(data.get("keywords", [])))
+
         st.markdown("### Recommendations")
         for rec in data["recommendations"]:
             st.markdown(f"- {rec}")
